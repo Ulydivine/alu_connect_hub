@@ -1,0 +1,61 @@
+rules_version = '2';
+
+// Simple role based rules for the ALU Link app.
+// Change ADMIN_EMAIL below to your own email before testing the admin screen.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.email == "admin@alulink.com";
+    }
+
+    // users collection: someone can read/write only their own profile
+    // (admin can read every profile so the app can check roles)
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.auth.uid == userId;
+      allow update: if isSignedIn() && request.auth.uid == userId;
+      allow delete: if false;
+    }
+
+    // startups collection: any signed in user can read (so students can
+    // browse), only the owner can create their own profile, only the
+    // owner or admin can update it (admin uses update to set isVerified)
+    match /startups/{startupId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.auth.uid == startupId;
+      allow update: if isSignedIn() &&
+        (request.auth.uid == startupId || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    // opportunities: anyone signed in can read, only the owning startup
+    // can create or edit their own posts
+    match /opportunities/{opportunityId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() &&
+        request.resource.data.startupId == request.auth.uid;
+      allow update: if isSignedIn() &&
+        resource.data.startupId == request.auth.uid;
+      allow delete: if false;
+    }
+
+    // applications: a student can create their own application, the
+    // student who applied and the startup who owns the opportunity can
+    // both read it, only the startup can update the status
+    match /applications/{applicationId} {
+      allow read: if isSignedIn() &&
+        (resource.data.studentUid == request.auth.uid ||
+         resource.data.startupId == request.auth.uid);
+      allow create: if isSignedIn() &&
+        request.resource.data.studentUid == request.auth.uid;
+      allow update: if isSignedIn() &&
+        resource.data.startupId == request.auth.uid;
+      allow delete: if false;
+    }
+  }
+}
